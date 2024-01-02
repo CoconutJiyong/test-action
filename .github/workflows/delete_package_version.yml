@@ -1,0 +1,111 @@
+name: Delete Package Version
+
+on:
+  release:
+    types: [deleted]
+
+jobs:
+  delete-version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get Previous Release Tag
+        id: prev-tag
+        run: |
+          # Get the previous release information
+          PREV_RELEASE=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases?per_page=100")
+
+          # Initialize PREV_TAG
+          PREV_TAG=""
+
+          # Determine the length of the releases array
+          LENGTH=$(echo "$PREV_RELEASE" | jq length)
+
+          # Check if the tag to be deleted contains "dev-"
+          if [[ "${{ github.ref }}" == "refs/tags/dev-"* ]]; then
+            # Loop through the releases to find the previous tag with "dev-"
+            for (( i=0; i<LENGTH; i++ )); do
+              TAG_NAME=$(echo "$PREV_RELEASE" | jq -r ".[$i].tag_name")
+              if [[ "$TAG_NAME" == "dev-"* ]]; then
+                PREV_TAG="$TAG_NAME"
+                break
+              fi
+            done
+
+            # If PREV_TAG is still empty, set it to "dev-0.0.1"
+            if [ -z "$PREV_TAG" ]; then
+              PREV_TAG="dev-0.0.1"
+            fi
+          else
+            # Loop through the releases to find the previous tag without "dev-"
+            for (( i=0; i<LENGTH; i++ )); do
+              TAG_NAME=$(echo "$PREV_RELEASE" | jq -r ".[$i].tag_name")
+              if [[ "$TAG_NAME" != "dev-"* ]]; then
+                PREV_TAG="$TAG_NAME"
+                break
+              fi
+            done
+
+            # If PREV_TAG is still empty, set it to "0.0.1"
+            if [ -z "$PREV_TAG" ]; then
+              PREV_TAG="v0.0.1"
+            fi
+          fi
+
+
+          echo "PREV_TAG is $PREV_TAG"
+          echo "PREV_TAG=$PREV_TAG" >> $GITHUB_ENV
+
+      - name: Checkout ${{ github.ref }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Get Deleted Release Title and Delete Tag
+        run: |
+          echo "GITHUB_REF is $GITHUB_REF"
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          echo "TAG_NAME is $TAG_NAME"
+          git tag -d $TAG_NAME
+          echo "Local branch delete success"
+          git push origin --delete "$TAG_NAME"
+          echo "Deleted tag: $TAG_NAME"
+
+      - name: Set Ref and Checkout
+        run: |
+          CHECKOUT_REF=""
+          if [[ $GITHUB_REF == refs/tags/v* ]]; then
+            CHECKOUT_REF="main"
+          elif [[ $GITHUB_REF == refs/tags/dev-* ]]; then
+            CHECKOUT_REF="develop"
+          else
+            CHECKOUT_REF=$GITHUB_REF  # or a default branch of your choice
+          fi
+          echo "CHECKOUT_REF=$CHECKOUT_REF" >> $GITHUB_ENV
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CHECKOUT_REF }}
+
+      - name: Set Git User Info
+        run: |
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git config user.name "${{ github.actor }}"
+
+      - name: Update package.json
+        run: |
+          # Update the version in package.json
+          jq ".version = \"$PREV_TAG\"" package.json > temp.json
+          mv temp.json package.json
+          git add package.json
+          if git diff --staged --quiet; then
+            echo "No changes to commit. Exiting..."
+            exit 0
+          else
+            echo "Change to commit. in progress...." 
+          fi
+          git commit -m "Revert version to $PREV_TAG"
+          git push origin ${{ env.CHECKOUT_REF }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
