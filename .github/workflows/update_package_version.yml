@@ -1,66 +1,35 @@
-name: Update Package Version
+name: Update PR Title for Merge Label
 
 on:
-  release:
-    types: [created, edited]
+  pull_request_target:
+    types: [labeled]
 
 jobs:
-  update-version:
+  update-title:
     runs-on: ubuntu-latest
     steps:
-      - name: Set Ref and Checkout
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Update PR Title
+        if: github.event.label.name == 'merge'
         run: |
-          if [[ "${{ github.ref }}" == "refs/tags/v"* ]]; then
-            echo "CHECKOUT_REF=main" >> $GITHUB_ENV  # Set CHECKOUT_REF to main for tags like v*
-            echo "Tag is main"
-          elif [[ "${{ github.ref }}" == "refs/tags/dev-"* ]]; then
-            echo "CHECKOUT_REF=develop" >> $GITHUB_ENV  # Set CHECKOUT_REF to develop for tags like dev-*
-            echo "Tag is develop"
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          BASE_BRANCH=${{ github.event.pull_request.base.ref }}
+          PR_TITLE="${{ github.event.pull_request.title }}"
+
+          if [[ "$BASE_BRANCH" == "develop" ]]; then
+            NEW_TITLE="Merge to develop dev-v: $PR_TITLE"
+          elif [[ "$BASE_BRANCH" == "main" ]]; then
+            NEW_TITLE="Merge to main v: $PR_TITLE"
           else
-            echo "ref is [ ${{ github.ref }} ]"
-            echo "Unsupported tag format. Using the default ref."
+            NEW_TITLE="$PR_TITLE"
           fi
 
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ env.CHECKOUT_REF }}
+          echo "New title: $NEW_TITLE"
 
-      - name: Extract Release Title and Set as Environment Variable
-        run: |
-          RELEASE_TITLE=$(jq --raw-output '.release.name' $GITHUB_EVENT_PATH)
-          echo "version=$RELEASE_TITLE" >> $GITHUB_ENV
-          echo "Release version is $RELEASE_TITLE"
-
-      - name: Set Git User Info
-        run: |
-          git config user.email "${{ github.actor }}@users.noreply.github.com"
-          git config user.name "${{ github.actor }}"
-
-      - name: Update package.json and Push
-        run: |
-          jq ".version = \"${{ env.version }}\"" package.json > temp.json
-          mv temp.json package.json
-          git add package.json
-          if git diff --staged --quiet; then
-            echo "No changes to commit. Exiting..."
-            echo "HAS_CHANGES=false" >> $GITHUB_ENV
-            exit 0
-          else
-            echo "Change to commit. in progress...." 
-            echo "HAS_CHANGES=true" >> $GITHUB_ENV
-          fi
-          git commit -m "Update version to ${{ env.version }}"
-          git push origin ${{ env.CHECKOUT_REF }}
-
-      # 태그 생성 및 푸시
-      - name: Tag and Push
-        if: env.HAS_CHANGES == 'true'
-        run: |
-          TAG_NAME=${GITHUB_REF#refs/tags/}
-          git tag -f $TAG_NAME
-          echo "Tag create"
-          git push --force origin $TAG_NAME
-          echo "Tag push"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          curl \
+            -X PATCH \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"title\":\"$NEW_TITLE\"}" \
+            "https://api.github.com/repos/${{ github.repository }}/pulls/$PR_NUMBER"
