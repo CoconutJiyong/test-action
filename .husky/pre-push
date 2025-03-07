@@ -11,6 +11,7 @@ for branch in "${protected_branches[@]}"; do
   fi
 done
 
+
 echo "🔍 Checking for modified .tsx files in packages/components..."
 
 # 🔹 1. develop 브랜치 기준으로 현재 브랜치의 모든 변경 파일 가져오기
@@ -33,7 +34,6 @@ for FILE in $CHANGED_FILES; do
 done
 
 # 🔹 3. 동일한 .stories.tsx, .stories.ts, .mdx 파일이 있는지 확인
-MISSING_STORYBOOK=""
 MODIFIED_STORYBOOK=""
 for FILE in $(echo "$MODIFIED_COMPONENTS"); do
   BASE_NAME=$(echo "$FILE" | sed 's/\.tsx$//')
@@ -43,26 +43,20 @@ for FILE in $(echo "$MODIFIED_COMPONENTS"); do
   for STORY in $STORIES_FILES; do
     if [ -f "$STORY" ]; then
       FOUND_STORYBOOK="$STORY"
+      echo "📖 Found Storybook file: $FOUND_STORYBOOK"
+      MODIFIED_STORYBOOK="$MODIFIED_STORYBOOK\n$FOUND_STORYBOOK"
       break
     fi
   done
 
   if [ -z "$FOUND_STORYBOOK" ]; then
     echo "🚨 Missing Storybook file for: $FILE"
-    MISSING_STORYBOOK="$MISSING_STORYBOOK\n$FILE"
-  else
-    echo "📖 Found Storybook file: $FOUND_STORYBOOK"
-    MODIFIED_STORYBOOK="$MODIFIED_STORYBOOK\n$FOUND_STORYBOOK"
+    echo "❌ Some components are missing Storybook files! Please add them."
+    exit 1
   fi
 done
 
-# 🔹 4. 스토리북 파일이 없으면 push 중단
-if [ -n "$MISSING_STORYBOOK" ]; then
-  echo "❌ Some components are missing Storybook files! Please add them."
-  exit 1
-fi
-
-# 🔹 5. 변경된 스토리북 파일이 있는지 확인
+# 🔹 4. 변경된 스토리북 파일이 있는지 확인
 STORYBOOK_CHANGES=""
 for FILE in $(echo "$MODIFIED_STORYBOOK"); do
   if echo "$CHANGED_FILES" | grep -q "$FILE"; then
@@ -71,7 +65,7 @@ for FILE in $(echo "$MODIFIED_STORYBOOK"); do
   fi
 done
 
-# 🔹 6. 변경된 스토리북 파일이 없으면 push 중단
+# 🔹 5. 변경된 스토리북 파일이 없으면 push 중단
 if [ -z "$STORYBOOK_CHANGES" ]; then
   echo "❌ No modifications detected in corresponding Storybook files!"
   exit 1
