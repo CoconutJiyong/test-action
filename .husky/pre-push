@@ -45,12 +45,13 @@ for FILE in $MODIFIED_COMPONENTS; do
     if [ -f "$STORY" ]; then
       FOUND_STORYBOOK="$STORY"
       echo "📖 Found Storybook file: $FOUND_STORYBOOK"
-      MODIFIED_STORYBOOK=$(printf "%s\n%s" "$MODIFIED_STORYBOOK" "$FOUND_STORYBOOK")
 
-      # ✅ `MISSING_STORYBOOK`에서 정확한 파일 제거
-      if echo "$MISSING_STORYBOOK" | grep -Fxq "$FOUND_STORYBOOK"; then
-        echo "🛠 Removing $FOUND_STORYBOOK from MISSING_STORYBOOK"
-        MISSING_STORYBOOK=$(echo "$MISSING_STORYBOOK" | grep -Fxv "$FOUND_STORYBOOK" || true)
+      # ✅ 스토리북 파일이 변경되었는지 확인
+      if git diff --quiet "$BASE_COMMIT" HEAD -- "$FOUND_STORYBOOK"; then
+        echo "🚨 Storybook file $FOUND_STORYBOOK exists but was NOT modified!"
+      else
+        MODIFIED_STORYBOOK=$(printf "%s\n%s" "$MODIFIED_STORYBOOK" "$FOUND_STORYBOOK")
+        echo "✅ Storybook modified: $FOUND_STORYBOOK"
       fi
 
       break
@@ -75,17 +76,8 @@ if [ -n "$(echo "$MISSING_STORYBOOK" | tr -d '\n')" ]; then
   exit 1
 fi
 
-# 🔹 변경된 스토리북 파일이 있는지 확인
-STORYBOOK_CHANGES=""
-for FILE in $(echo "$MODIFIED_STORYBOOK"); do
-  if echo "$CHANGED_FILES" | grep -q "$FILE"; then
-    STORYBOOK_CHANGES=$(printf "%s\n%s" "$STORYBOOK_CHANGES" "$FILE")
-    echo "✅ Storybook modified: $FILE"
-  fi
-done
-
 # 🔹 변경된 스토리북 파일이 없으면 push 중단
-if [ -z "$(echo "$STORYBOOK_CHANGES" | tr -d '\n')" ]; then
+if [ -z "$(echo "$MODIFIED_STORYBOOK" | tr -d '\n')" ]; then
   echo "❌ No modifications detected in corresponding Storybook files!"
   exit 1
 fi
