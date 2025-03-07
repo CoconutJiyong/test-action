@@ -73,11 +73,13 @@ for FILE in $MODIFIED_COMPONENTS; do
   for STORY in $STORIES_FILES; do
     if [ -f "$STORY" ]; then
       echo "🔎 Checking if Storybook file was modified: $STORY"
-      if git diff --quiet "$BASE_COMMIT" HEAD -- "$STORY"; then
-        echo "🚨 Storybook file exists but was NOT modified in any commit: $STORY"
-      else
+      
+      # ✅ 모든 커밋에서 스토리북이 변경되었는지 확인
+      if git log --name-only "$BASE_COMMIT"..HEAD -- "$STORY" | grep -q "$STORY"; then
         MODIFIED_STORYBOOK=$(printf "%s\n%s" "$MODIFIED_STORYBOOK" "$STORY")
         echo "✅ Storybook modified in some commit: $STORY"
+      else
+        echo "🚨 Storybook file exists but was NOT modified in any commit: $STORY"
       fi
       break
     fi
