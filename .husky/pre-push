@@ -11,60 +11,72 @@ for branch in "${protected_branches[@]}"; do
   fi
 done
 
-# ✅ 변경된 컴포넌트 파일 확인 (origin/develop과 비교)
-echo "🔍 Checking for modified .tsx/.jsx files in packages/components..."
-components_changed=$(git diff --name-only origin/develop --diff-filter=AM | grep -E '^packages/components/' | grep -E '\.(tsx|jsx)$')
-echo "📄 Modified components: $components_changed"
+echo "🔍 Checking for modified .tsx files in packages/components..."
 
-missing_stories=()
-unchanged_stories=()
+# 🔹 1. develop 브랜치 기준으로 현재 브랜치의 모든 변경 파일 가져오기
+BASE_BRANCH="develop"
+MERGE_BASE=$(git merge-base origin/$BASE_BRANCH HEAD)
 
-if [ -n "$components_changed" ]; then
-  while IFS= read -r file; do
-    component_dir=$(dirname "$file")
-    echo "📁 Checking directory: $component_dir"
+CHANGED_FILES=$(git diff --name-only --diff-filter=AM "$MERGE_BASE" HEAD)
+echo "📝 Full changed files list (compared to develop):"
+echo "$CHANGED_FILES"
 
-    # ✅ 스토리북 파일 목록 확인
-    story_files=$(find "$component_dir" -maxdepth 1 -type f \( -name "*.stories.tsx" -o -name "*.stories.ts" -o -name "*.stories.mdx" \))
+# 🔹 2. packages/components 내부의 모든 .tsx 파일 찾기
+MODIFIED_COMPONENTS=""
+for FILE in $CHANGED_FILES; do
+  case "$FILE" in
+    packages/components/**/*.tsx)
+      MODIFIED_COMPONENTS="$MODIFIED_COMPONENTS\n$FILE"
+      echo "✅ Component modified: $FILE"
+      ;;
+  esac
+done
 
-    if [ -z "$story_files" ]; then
-      echo "❌ No Storybook file found for $file"
-      missing_stories+=("$file")
-    else
-      echo "📖 Found Storybook files:"
-      echo "$story_files"
+# 🔹 3. 동일한 .stories.tsx, .stories.ts, .mdx 파일이 있는지 확인
+MISSING_STORYBOOK=""
+MODIFIED_STORYBOOK=""
+for FILE in $(echo "$MODIFIED_COMPONENTS"); do
+  BASE_NAME=$(echo "$FILE" | sed 's/\.tsx$//')
+  STORIES_FILES="${BASE_NAME}.stories.tsx ${BASE_NAME}.stories.ts ${BASE_NAME}.mdx"
 
-      # ✅ 해당 Storybook 파일들이 변경되었는지 확인
-      story_changed=$(git diff --name-only origin/develop --diff-filter=AM | grep -F -x -f <(echo "$story_files"))
-
-      if [ -z "$story_changed" ]; then
-        echo "⚠️ Storybook file exists but was NOT modified: $story_files"
-        unchanged_stories+=("$file")
-      else
-        echo "✅ Storybook file was modified: $story_changed"
-      fi
+  FOUND_STORYBOOK=""
+  for STORY in $STORIES_FILES; do
+    if [ -f "$STORY" ]; then
+      FOUND_STORYBOOK="$STORY"
+      break
     fi
-  done <<< "$components_changed"
-fi
-
-# 🚨 Push 차단 조건
-if [ ${#missing_stories[@]} -gt 0 ]; then
-  echo "❌ [ERROR] Push blocked: The following components have no corresponding Storybook file:"
-  for file in "${missing_stories[@]}"; do
-    echo "   - $file"
   done
-  echo "📌 Please create a '.stories.tsx', '.stories.ts', or '.stories.mdx' file in the same directory."
+
+  if [ -z "$FOUND_STORYBOOK" ]; then
+    echo "🚨 Missing Storybook file for: $FILE"
+    MISSING_STORYBOOK="$MISSING_STORYBOOK\n$FILE"
+  else
+    echo "📖 Found Storybook file: $FOUND_STORYBOOK"
+    MODIFIED_STORYBOOK="$MODIFIED_STORYBOOK\n$FOUND_STORYBOOK"
+  fi
+done
+
+# 🔹 4. 스토리북 파일이 없으면 push 중단
+if [ -n "$MISSING_STORYBOOK" ]; then
+  echo "❌ Some components are missing Storybook files! Please add them."
   exit 1
 fi
 
-if [ ${#unchanged_stories[@]} -gt 0 ]; then
-  echo "❌ [ERROR] Push blocked: The following components were modified, but their Storybook files were not updated:"
-  for file in "${unchanged_stories[@]}"; do
-    echo "   - $file"
-  done
-  echo "📌 Please update the corresponding '.stories.tsx', '.stories.ts', or '.stories.mdx' file."
+# 🔹 5. 변경된 스토리북 파일이 있는지 확인
+STORYBOOK_CHANGES=""
+for FILE in $(echo "$MODIFIED_STORYBOOK"); do
+  if echo "$CHANGED_FILES" | grep -q "$FILE"; then
+    STORYBOOK_CHANGES="$STORYBOOK_CHANGES\n$FILE"
+    echo "✅ Storybook modified: $FILE"
+  fi
+done
+
+# 🔹 6. 변경된 스토리북 파일이 없으면 push 중단
+if [ -z "$STORYBOOK_CHANGES" ]; then
+  echo "❌ No modifications detected in corresponding Storybook files!"
   exit 1
 fi
 
-echo "✅ All checks passed. Proceeding with push."
+echo "✅ All conditions met. Proceeding with push!"
+
 exit 0
