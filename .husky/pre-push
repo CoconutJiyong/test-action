@@ -17,6 +17,7 @@ echo "🔍 Checking for modified .tsx files in packages/components..."
 # 🔹 feature 브랜치가 develop에서 분기된 이후 변경된 파일 가져오기
 BASE_COMMIT=$(git merge-base origin/develop HEAD)
 CHANGED_FILES=$(git diff --name-only --diff-filter=AM "$BASE_COMMIT" HEAD | sort -u)
+
 echo "📝 Full changed files list (since feature branch creation):"
 echo "$CHANGED_FILES"
 
@@ -34,6 +35,7 @@ echo "$MODIFIED_COMPONENTS"
 # 🔹 변경된 .tsx 파일에서 .stories.tsx, .stories.ts, .mdx 존재 여부 확인
 MISSING_STORYBOOK=""
 MODIFIED_STORYBOOK=""
+
 for FILE in $MODIFIED_COMPONENTS; do
   BASE_NAME=$(echo "$FILE" | sed 's/\.tsx$//')
   STORIES_FILES="${BASE_NAME}.stories.tsx ${BASE_NAME}.stories.ts ${BASE_NAME}.mdx"
@@ -51,16 +53,18 @@ for FILE in $MODIFIED_COMPONENTS; do
   if [ -z "$FOUND_STORYBOOK" ]; then
     echo "🚨 Missing Storybook file for: $FILE"
     MISSING_STORYBOOK="$MISSING_STORYBOOK\n$FILE"
-  else
-    # ✅ 스토리북 파일이 존재하면 MISSING_STORYBOOK에서 제거
-    MISSING_STORYBOOK=$(echo "$MISSING_STORYBOOK" | grep -v "$FILE" || true)
   fi
 done
+
+# 🔹 디버깅: MISSING_STORYBOOK, MODIFIED_STORYBOOK 변수 출력
+echo "🔍 DEBUG: MISSING_STORYBOOK content:"
+echo "$MISSING_STORYBOOK"
+echo "🔍 DEBUG: MODIFIED_STORYBOOK content:"
+echo "$MODIFIED_STORYBOOK"
 
 # 🔹 스토리북 파일이 없으면 push 중단
 if [ -n "$MISSING_STORYBOOK" ]; then
   echo "❌ Some components are missing Storybook files! Please add them."
-  echo "$MISSING_STORYBOOK"
   exit 1
 fi
 
