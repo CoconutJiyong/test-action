@@ -11,31 +11,28 @@ for branch in "${protected_branches[@]}"; do
   fi
 done
 
-
 echo "🔍 Checking for modified .tsx files in packages/components..."
 
-# 🔹 1. develop 브랜치 기준으로 현재 브랜치의 모든 변경 파일 가져오기
-BASE_BRANCH="develop"
-MERGE_BASE=$(git merge-base origin/$BASE_BRANCH HEAD)
-
-CHANGED_FILES=$(git diff --name-only --diff-filter=AM "$MERGE_BASE" HEAD)
-echo "📝 Full changed files list (compared to develop):"
+# 🔹 현재 브랜치의 모든 변경 파일 가져오기
+CHANGED_FILES=$(git log --pretty=format: --name-only --diff-filter=AM HEAD | sort -u)
+echo "📝 Full changed files list:"
 echo "$CHANGED_FILES"
 
-# 🔹 2. packages/components 내부의 모든 .tsx 파일 찾기
-MODIFIED_COMPONENTS=""
-for FILE in $CHANGED_FILES; do
-  case "$FILE" in
-    packages/components/**/*.tsx)
-      MODIFIED_COMPONENTS="$MODIFIED_COMPONENTS\n$FILE"
-      echo "✅ Component modified: $FILE"
-      ;;
-  esac
-done
+# 🔹 packages/components 내부 변경된 파일만 필터링
+MODIFIED_COMPONENTS=$(echo "$CHANGED_FILES" | grep '^packages/components/.*\.tsx$' || true)
 
-# 🔹 3. 동일한 .stories.tsx, .stories.ts, .mdx 파일이 있는지 확인
+if [ -z "$MODIFIED_COMPONENTS" ]; then
+  echo "✅ No .tsx file changes detected in packages/components."
+  exit 0
+fi
+
+echo "🔍 Analyzing modified components:"
+echo "$MODIFIED_COMPONENTS"
+
+# 🔹 변경된 .tsx 파일에서 .stories.tsx, .stories.ts, .mdx 존재 여부 확인
+MISSING_STORYBOOK=""
 MODIFIED_STORYBOOK=""
-for FILE in $(echo "$MODIFIED_COMPONENTS"); do
+for FILE in $MODIFIED_COMPONENTS; do
   BASE_NAME=$(echo "$FILE" | sed 's/\.tsx$//')
   STORIES_FILES="${BASE_NAME}.stories.tsx ${BASE_NAME}.stories.ts ${BASE_NAME}.mdx"
 
@@ -51,12 +48,17 @@ for FILE in $(echo "$MODIFIED_COMPONENTS"); do
 
   if [ -z "$FOUND_STORYBOOK" ]; then
     echo "🚨 Missing Storybook file for: $FILE"
-    echo "❌ Some components are missing Storybook files! Please add them."
-    exit 1
+    MISSING_STORYBOOK="$MISSING_STORYBOOK\n$FILE"
   fi
 done
 
-# 🔹 4. 변경된 스토리북 파일이 있는지 확인
+# 🔹 스토리북 파일이 없으면 push 중단
+if [ -n "$MISSING_STORYBOOK" ]; then
+  echo "❌ Some components are missing Storybook files! Please add them."
+  exit 1
+fi
+
+# 🔹 변경된 스토리북 파일이 있는지 확인
 STORYBOOK_CHANGES=""
 for FILE in $(echo "$MODIFIED_STORYBOOK"); do
   if echo "$CHANGED_FILES" | grep -q "$FILE"; then
@@ -65,7 +67,7 @@ for FILE in $(echo "$MODIFIED_STORYBOOK"); do
   fi
 done
 
-# 🔹 5. 변경된 스토리북 파일이 없으면 push 중단
+# 🔹 변경된 스토리북 파일이 없으면 push 중단
 if [ -z "$STORYBOOK_CHANGES" ]; then
   echo "❌ No modifications detected in corresponding Storybook files!"
   exit 1
