@@ -45,15 +45,6 @@ for FILE in $MODIFIED_COMPONENTS; do
     if [ -f "$STORY" ]; then
       FOUND_STORYBOOK="$STORY"
       echo "📖 Found Storybook file: $FOUND_STORYBOOK"
-
-      # ✅ 모든 commit 기준으로 스토리북 변경 확인
-      if git diff --quiet "$BASE_COMMIT" HEAD -- "$FOUND_STORYBOOK"; then
-        echo "🚨 Storybook file exists but was NOT modified in any commit: $FOUND_STORYBOOK"
-      else
-        MODIFIED_STORYBOOK=$(printf "%s\n%s" "$MODIFIED_STORYBOOK" "$FOUND_STORYBOOK")
-        echo "✅ Storybook modified in some commit: $FOUND_STORYBOOK"
-      fi
-
       break
     fi
   done
@@ -64,21 +55,42 @@ for FILE in $MODIFIED_COMPONENTS; do
   fi
 done
 
-# 🔹 디버깅: MISSING_STORYBOOK, MODIFIED_STORYBOOK 변수 출력
+# 🔹 디버깅: Missing Storybook 파일 출력
 echo "🔍 DEBUG: FINAL MISSING_STORYBOOK content:"
 echo "$MISSING_STORYBOOK"
-echo "🔍 DEBUG: FINAL MODIFIED_STORYBOOK content:"
-echo "$MODIFIED_STORYBOOK"
 
-# 🔹 스토리북 파일이 없으면 push 중단
+# 🔹 4. 동일한 이름의 stories 파일이 없으면 push 중단
 if [ -n "$(echo "$MISSING_STORYBOOK" | tr -d '\n')" ]; then
   echo "❌ Some components are missing Storybook files! Please add them."
   exit 1
 fi
 
-# 🔹 변경된 스토리북 파일이 없으면 push 중단
+# 🔹 5. .tsx 변경이 있고 stories 파일 변경이 없으면 push 중단
+for FILE in $MODIFIED_COMPONENTS; do
+  BASE_NAME=$(echo "$FILE" | sed 's/\.tsx$//')
+  STORIES_FILES="${BASE_NAME}.stories.tsx ${BASE_NAME}.stories.ts ${BASE_NAME}.mdx"
+
+  for STORY in $STORIES_FILES; do
+    if [ -f "$STORY" ]; then
+      echo "🔎 Checking if Storybook file was modified: $STORY"
+      if git diff --quiet "$BASE_COMMIT" HEAD -- "$STORY"; then
+        echo "🚨 Storybook file exists but was NOT modified in any commit: $STORY"
+      else
+        MODIFIED_STORYBOOK=$(printf "%s\n%s" "$MODIFIED_STORYBOOK" "$STORY")
+        echo "✅ Storybook modified in some commit: $STORY"
+      fi
+      break
+    fi
+  done
+done
+
+# 🔹 디버깅: Modified Storybook 파일 출력
+echo "🔍 DEBUG: FINAL MODIFIED_STORYBOOK content:"
+echo "$MODIFIED_STORYBOOK"
+
+# 🔹 6. components 변경만 있고 stories 변경이 없으면 push 중단
 if [ -z "$(echo "$MODIFIED_STORYBOOK" | tr -d '\n')" ]; then
-  echo "❌ No modifications detected in corresponding Storybook files!"
+  echo "❌ Component changed but Storybook was NOT updated. Please update the Storybook file."
   exit 1
 fi
 
