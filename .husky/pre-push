@@ -46,6 +46,9 @@ for FILE in $MODIFIED_COMPONENTS; do
       FOUND_STORYBOOK="$STORY"
       echo "📖 Found Storybook file: $FOUND_STORYBOOK"
       MODIFIED_STORYBOOK="$MODIFIED_STORYBOOK\n$FOUND_STORYBOOK"
+
+      # ✅ 스토리북 파일이 존재하면 MISSING_STORYBOOK에서 해당 항목 제거
+      MISSING_STORYBOOK=$(echo "$MISSING_STORYBOOK" | grep -v "$FILE" || true)
       break
     fi
   done
