@@ -13,9 +13,10 @@ done
 
 echo "🔍 Checking for modified .tsx files in packages/components..."
 
-# 🔹 현재 브랜치의 모든 변경 파일 가져오기
-CHANGED_FILES=$(git log --pretty=format: --name-only --diff-filter=AM HEAD | sort -u)
-echo "📝 Full changed files list:"
+# 🔹 feature 브랜치가 develop에서 분기된 이후 변경된 파일 가져오기
+BASE_COMMIT=$(git merge-base origin/develop HEAD)
+CHANGED_FILES=$(git diff --name-only --diff-filter=AM "$BASE_COMMIT" HEAD | sort -u)
+echo "📝 Full changed files list (since feature branch creation):"
 echo "$CHANGED_FILES"
 
 # 🔹 packages/components 내부 변경된 파일만 필터링
@@ -74,5 +75,4 @@ if [ -z "$STORYBOOK_CHANGES" ]; then
 fi
 
 echo "✅ All conditions met. Proceeding with push!"
-
 exit 0
