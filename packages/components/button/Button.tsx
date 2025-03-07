@@ -2,6 +2,7 @@ import React from 'react';
 
 interface ButtonProps {
     text: string;
+    font:string;
 }
 
 const Button = () => {
