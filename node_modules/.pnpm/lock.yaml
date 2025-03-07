@@ -11,6 +11,9 @@ importers:
       husky:
         specifier: ^9.1.7
         version: 9.1.7
+      react:
+        specifier: ^19.0.0
+        version: 19.0.0
 
 packages:
 
@@ -19,6 +22,12 @@ packages:
     engines: {node: '>=18'}
     hasBin: true
 
+  react@19.0.0:
+    resolution: {integrity: sha512-V8AVnmPIICiWpGfm6GLzCR/W5FXLchHop40W4nXBmdlEceh16rCN8O8LNWm5bh5XUX91fh7KpA+W0TgMKmgTpQ==}
+    engines: {node: '>=0.10.0'}
+
 snapshots:
 
   husky@9.1.7: {}
+
+  react@19.0.0: {}
