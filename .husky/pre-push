@@ -14,7 +14,7 @@ done
 
 echo "🔍 Checking for modified .tsx files in packages/components..."
 
-# 🔹 feature 브랜치가 develop에서 분기된 이후 변경된 파일 가져오기
+# 🔹 현재 커밋된 파일 목록 가져오기 (HEAD 기준)
 BASE_COMMIT=$(git merge-base origin/develop HEAD)
 CHANGED_FILES=$(git diff --name-only --diff-filter=AM "$BASE_COMMIT" HEAD | sort -u)
 
@@ -46,8 +46,8 @@ for FILE in $MODIFIED_COMPONENTS; do
       FOUND_STORYBOOK="$STORY"
       echo "📖 Found Storybook file: $FOUND_STORYBOOK"
 
-      # ✅ 스토리북 파일이 실제로 변경되었는지 확인
-      if git diff --quiet "$BASE_COMMIT" HEAD -- "$FOUND_STORYBOOK"; then
+      # ✅ 스토리북 파일이 실제로 변경되었는지 확인 (staged 상태 기준)
+      if git diff --cached --quiet -- "$FOUND_STORYBOOK"; then
         echo "🚨 Storybook file exists but was NOT modified: $FOUND_STORYBOOK"
       else
         MODIFIED_STORYBOOK=$(printf "%s\n%s" "$MODIFIED_STORYBOOK" "$FOUND_STORYBOOK")
