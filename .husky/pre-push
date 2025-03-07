@@ -47,14 +47,12 @@ for FILE in $MODIFIED_COMPONENTS; do
       echo "📖 Found Storybook file: $FOUND_STORYBOOK"
       MODIFIED_STORYBOOK=$(printf "%s\n%s" "$MODIFIED_STORYBOOK" "$FOUND_STORYBOOK")
 
-      # ✅ 스토리북 파일을 찾았으면 `MISSING_STORYBOOK`에서 제거
-      TMP_LIST=""
-      while read -r LINE; do
-        if [ "$LINE" != "$FILE" ]; then
-          TMP_LIST=$(printf "%s\n%s" "$TMP_LIST" "$LINE")
-        fi
-      done <<< "$MISSING_STORYBOOK"
-      MISSING_STORYBOOK="$TMP_LIST"
+      # ✅ `MISSING_STORYBOOK`에서 정확한 파일 제거
+      if echo "$MISSING_STORYBOOK" | grep -Fxq "$FOUND_STORYBOOK"; then
+        echo "🛠 Removing $FOUND_STORYBOOK from MISSING_STORYBOOK"
+        MISSING_STORYBOOK=$(echo "$MISSING_STORYBOOK" | grep -Fxv "$FOUND_STORYBOOK" || true)
+      fi
+
       break
     fi
   done
