@@ -1,0 +1,92 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# 🔹 보호된 브랜치(main, develop) 직접 푸시 방지
+protected_branches=("main" "develop")
+current_branch=$(git symbolic-ref HEAD | sed -e 's,.*/\(.*\),\1,')
+
+for branch in "${protected_branches[@]}"; do
+  if [ "$current_branch" = "$branch" ]; then
+    echo "❌ Pushing directly to the '$current_branch' branch is not allowed."
+    exit 1
+  fi
+done
+
+echo "🔍 Checking for modified .tsx files in packages/components..."
+
+# 🔹 feature 브랜치가 develop에서 분기된 이후 변경된 파일 가져오기
+BASE_COMMIT=$(git merge-base origin/develop HEAD)
+CHANGED_FILES=$(git diff --name-only --diff-filter=AM "$BASE_COMMIT" HEAD | sort -u)
+
+echo "📝 Full changed files list (since feature branch creation):"
+echo "$CHANGED_FILES"
+
+# 🔹 packages/components 내부 변경된 파일만 필터링
+MODIFIED_COMPONENTS=$(echo "$CHANGED_FILES" | grep '^packages/components/.*\.tsx$' || true)
+
+if [ -z "$MODIFIED_COMPONENTS" ]; then
+  echo "✅ No .tsx file changes detected in packages/components."
+  exit 0
+fi
+
+echo "🔍 Analyzing modified components:"
+echo "$MODIFIED_COMPONENTS"
+
+# 🔹 변경된 .tsx 파일에서 .stories.tsx, .stories.ts, .mdx 존재 여부 확인
+MISSING_STORYBOOK=""
+MODIFIED_STORYBOOK=""
+
+for FILE in $MODIFIED_COMPONENTS; do
+  BASE_NAME=$(echo "$FILE" | sed 's/\.tsx$//')
+  STORIES_FILES="${BASE_NAME}.stories.tsx ${BASE_NAME}.stories.ts ${BASE_NAME}.mdx"
+
+  FOUND_STORYBOOK=""
+  for STORY in $STORIES_FILES; do
+    if [ -f "$STORY" ]; then
+      FOUND_STORYBOOK="$STORY"
+      echo "📖 Found Storybook file: $FOUND_STORYBOOK"
+      MODIFIED_STORYBOOK=$(printf "%s\n%s" "$MODIFIED_STORYBOOK" "$FOUND_STORYBOOK")
+
+      # ✅ `MISSING_STORYBOOK`에서 해당 파일을 정확히 제거 (배열 기반)
+      TMP_LIST=$(echo "$MISSING_STORYBOOK" | awk -v rm="$FILE" '$0 != rm')
+      MISSING_STORYBOOK="$TMP_LIST"
+
+      break
+    fi
+  done
+
+  if [ -z "$FOUND_STORYBOOK" ]; then
+    echo "🚨 Missing Storybook file for: $FILE"
+    MISSING_STORYBOOK=$(printf "%s\n%s" "$MISSING_STORYBOOK" "$FILE")
+  fi
+done
+
+# 🔹 디버깅: MISSING_STORYBOOK, MODIFIED_STORYBOOK 변수 출력
+echo "🔍 DEBUG: FINAL MISSING_STORYBOOK content:"
+echo "$MISSING_STORYBOOK"
+echo "🔍 DEBUG: FINAL MODIFIED_STORYBOOK content:"
+echo "$MODIFIED_STORYBOOK"
+
+# 🔹 스토리북 파일이 없으면 push 중단
+if [ -n "$(echo "$MISSING_STORYBOOK" | tr -d '\n')" ]; then
+  echo "❌ Some components are missing Storybook files! Please add them."
+  exit 1
+fi
+
+# 🔹 변경된 스토리북 파일이 있는지 확인
+STORYBOOK_CHANGES=""
+for FILE in $(echo "$MODIFIED_STORYBOOK"); do
+  if echo "$CHANGED_FILES" | grep -q "$FILE"; then
+    STORYBOOK_CHANGES=$(printf "%s\n%s" "$STORYBOOK_CHANGES" "$FILE")
+    echo "✅ Storybook modified: $FILE"
+  fi
+done
+
+# 🔹 변경된 스토리북 파일이 없으면 push 중단
+if [ -z "$(echo "$STORYBOOK_CHANGES" | tr -d '\n')" ]; then
+  echo "❌ No modifications detected in corresponding Storybook files!"
+  exit 1
+fi
+
+echo "✅ All conditions met. Proceeding with push!"
+exit 0

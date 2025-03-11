@@ -1,0 +1,100 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# 🔹 보호된 브랜치(main, develop) 직접 푸시 방지
+protected_branches=("main" "develop")
+current_branch=$(git symbolic-ref HEAD | sed -e 's,.*/\(.*\),\1,')
+
+for branch in "${protected_branches[@]}"; do
+  if [ "$current_branch" = "$branch" ]; then
+    echo "❌ Pushing directly to the '$current_branch' branch is not allowed."
+    exit 1
+  fi
+done
+
+echo "🔍 Checking for modified .tsx files in packages/components..."
+
+# 🔹 feature 브랜치가 develop에서 분기된 이후 변경된 파일 가져오기
+BASE_COMMIT=$(git merge-base origin/develop HEAD)
+CHANGED_FILES=$(git diff --name-only --diff-filter=AM "$BASE_COMMIT" HEAD | sort -u)
+
+echo "📝 Full changed files list (since feature branch creation):"
+echo "$CHANGED_FILES"
+
+# 🔹 packages/components 내부 변경된 파일만 필터링
+MODIFIED_COMPONENTS=$(echo "$CHANGED_FILES" | grep '^packages/components/.*\.tsx$' || true)
+
+if [ -z "$MODIFIED_COMPONENTS" ]; then
+  echo "✅ No .tsx file changes detected in packages/components."
+  exit 0
+fi
+
+echo "🔍 Analyzing modified components:"
+echo "$MODIFIED_COMPONENTS"
+
+# 🔹 변경된 .tsx 파일에서 .stories.tsx, .stories.ts, .mdx 존재 여부 확인
+MISSING_STORYBOOK=""
+MODIFIED_STORYBOOK=""
+
+for FILE in $MODIFIED_COMPONENTS; do
+  BASE_NAME=$(echo "$FILE" | sed 's/\.tsx$//')
+  STORIES_FILES="${BASE_NAME}.stories.tsx ${BASE_NAME}.stories.ts ${BASE_NAME}.mdx"
+
+  FOUND_STORYBOOK=""
+  for STORY in $STORIES_FILES; do
+    if [ -f "$STORY" ]; then
+      FOUND_STORYBOOK="$STORY"
+      echo "📖 Found Storybook file: $FOUND_STORYBOOK"
+      break
+    fi
+  done
+
+  if [ -z "$FOUND_STORYBOOK" ]; then
+    echo "🚨 Missing Storybook file for: $FILE"
+    MISSING_STORYBOOK=$(printf "%s\n%s" "$MISSING_STORYBOOK" "$FILE")
+  fi
+done
+
+# 🔹 디버깅: Missing Storybook 파일 출력
+echo "🔍 DEBUG: FINAL MISSING_STORYBOOK content:"
+echo "$MISSING_STORYBOOK"
+
+# 🔹 4. 동일한 이름의 stories 파일이 없으면 push 중단
+if [ -n "$(echo "$MISSING_STORYBOOK" | tr -d '\n')" ]; then
+  echo "❌ Some components are missing Storybook files! Please add them."
+  exit 1
+fi
+
+# 🔹 5. .tsx 변경이 있고 stories 파일 변경이 없으면 push 중단
+for FILE in $MODIFIED_COMPONENTS; do
+  BASE_NAME=$(echo "$FILE" | sed 's/\.tsx$//')
+  STORIES_FILES="${BASE_NAME}.stories.tsx ${BASE_NAME}.stories.ts ${BASE_NAME}.mdx"
+
+  for STORY in $STORIES_FILES; do
+    if [ -f "$STORY" ]; then
+      echo "🔎 Checking if Storybook file was modified: $STORY"
+      
+      # ✅ 모든 커밋에서 스토리북이 변경되었는지 확인
+      if git log --name-only "$BASE_COMMIT"..HEAD -- "$STORY" | grep -q "$STORY"; then
+        MODIFIED_STORYBOOK=$(printf "%s\n%s" "$MODIFIED_STORYBOOK" "$STORY")
+        echo "✅ Storybook modified in some commit: $STORY"
+      else
+        echo "🚨 Storybook file exists but was NOT modified in any commit: $STORY"
+      fi
+      break
+    fi
+  done
+done
+
+# 🔹 디버깅: Modified Storybook 파일 출력
+echo "🔍 DEBUG: FINAL MODIFIED_STORYBOOK content:"
+echo "$MODIFIED_STORYBOOK"
+
+# 🔹 6. components 변경만 있고 stories 변경이 없으면 push 중단
+if [ -z "$(echo "$MODIFIED_STORYBOOK" | tr -d '\n')" ]; then
+  echo "❌ Component changed but Storybook was NOT updated. Please update the Storybook file."
+  exit 1
+fi
+
+echo "✅ All conditions met. Proceeding with push!"
+exit 0
